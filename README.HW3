@@ -1,0 +1,106 @@
+/*README*/
+
+Group # 11:
+
+NAME: SREEKAR REDDY
+SB ID # : 108625486
+
+NAME: SURYA RAMA VAMSI VARANASI
+SB ID # : 108661822
+
+In this homework, we build a file system using stacking technologies. In this homework, we perform 3 tasks:
+
+i) FIx any bug in wrapfs that causes the kernel to crash when using LTP.
+
+ii) Modify the wrapfs to support address space operations.
+
+iii) Add file data encryption.
+
+The below source files are modified:
+
+1) wrapfs/wrapfs.h - Added extra fields in wrapfs_sb_info structure to hold mount options and a key to encrypt and decrypt.
+
+2)wrapfs/file.c- Modified ->read and -write so that they call ->do_sync_read and ->do_sync_write respectively to perform the address apace operations when the mmap option is provided. Modified -> wrapfs_unlocked_ioctl to copy the key value provided by the user to kernel space in order to perform encrytion and decryption. Modified -> mmap operation to assign address_operations if the mount option is provided.
+
+3)wrapfs/main.c - Modified ->wrapfs_read_super() to initialize mount options and key in wrapfs_sb_info structure. Modified wrapfs_mount() function to make it call ->parse_options to parse for mount options.
+
+4)wrapfs/lookup.c - Modified -> wrapfs_iget() to make it point to the necessary file_operations and address_operations according to the mount options specified.
+
+5)wrapfs/mmap.c - Added ->wrapfs_readpage, ->wrapfs_writepage, ->wrapfs_write_begin and wrapfs_write_end functions a new address_operations structure to support address space operations. I have copied code for ->wrapfs_readpage, ->wrapfs_write_begin and wrapfs_write_end from ecryptfs and  ->wrapfs_writepage, from unionfs.
+
+6)wrapfs/Makefile - Modified the Makefile to copile the user programs also and included a flag to perform conditional compiling,i.e to compile the code in the #ifdef WRAPFS_CRYPTO only if the corresponding option is provided with the Make command.
+
+
+Added files:
+
+1)wrapfs/wrapfs_setkey.c - This is the user program that can be used to set or reset the key required to encrypt and decrypt files. There is no restriction on the key length but 32 bytes will only be copied to the kernel space. This is done by appending zeros to the key so that it becomes of length 32.  The ioctl number being used is 1. If no key is passed or the key passes is zero, then encrytion and decrytion of files is not permitted.
+
+2)wrapfs/test.c - This is a user level program that writes to a file at the wrapfs, reads from it and finallly truncates it.
+
+Steps to be followed for compiling and running:
+
+In fs/wrapfs folder, 
+
+#make - To compile without part 3 of the assignment.
+
+#make CRYPTO+=-DWRAPFS_CRYPTO - To compile both part2 and part 3 of the assignment.
+
+Insert module:
+
+#insmod wrapfs.ko
+
+Mount:
+
+#mount -t ext3 /dev/sdb1 /tmp.
+
+This mounts the file system found on device /dev/sdb1 which is of type ext3 at the directory /tmp.
+
+mount -t wrapfs -o mmap /tmp/ /n/scratch/
+
+This mounts the file system found on device /tmp which is of type wrapfs at the directory /n/scratch/. If the type is specified as "mmap" then the address space operations are performed and if "make" is performed with WRAPFS_CRYTO, then encrytion and decrytion is performed.
+
+Setting the key:
+
+#./wrapfs_setkey.o 4564 /n/scratch - 4564 is the key used to encrypt or decrypt. If 0 is passed , then it revokes/resets the key.  Without key, the read and write operations are not allowed.
+
+
+./test.0 - This runs the user program written that writes to a file, reads back the written data and then truncates the data.
+
+cd /n/scratch/
+
+
+Unmounting:
+
+#umount /n/scratch
+#umount /tmp
+
+Removing the "wrapfs" module
+
+#rmmod wrapfs
+
+Design considerations:
+
+If the filesystem is compiled using WRAPFS_CRYPTO and is mounted using mmap option, then the key has to be set before performing any read or write. The user has to invoke the ioctl() for the file system and pass in the key required for encrypting and decrypting. If the ioctl() is not invoked, read or write will return -ENOKEY error code. The only thing I could not resolve is that the file will be created without writing data if the ioctl is not called and the key is not set
+
+
+Thus we can have the following cases:
+
+Case 1:
+ 
+Compiling only the 2nd part of the assignment and mounting without the mmap option set. In this case, the address_space_operations are not invoked and the vm_ops are invoked instead.
+
+ Case 2:
+
+Compiling only the 2nd part of the assignment and mounting with the mmap option set. In this case, the address_space_operations are invoked.
+
+Case 3:
+
+Compile using "make CRYPTO=-DWRAPFS_CRYPTO" to compile both the second and the third parts of the assignment with the mmap mount option enabled and the key set to a non-zero number. In this case, the address space operations are invoked. The wrapfs will have clear text and the underlying file system will have the encrypted data which is decrypted when the user tries to retrieve it.
+
+Case 4:
+
+Compile using "make CRYPTO=-DWRAPFS_CRYPTO" to compile both the second and the third parts of the assignment with the mmap mount option enabled but the key value is not set. In this case, the file encryption and decrytion are not permitted and a -ENOKEY error is returned to the user.
+
+References:
+
+I have copied code from ecryptfs and unionfs for the address space operations and have used the aes for encrytion and decryption.
